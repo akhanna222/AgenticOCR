@@ -40,21 +40,6 @@ def save_models(models: Dict[str, Any]) -> None:
         json.dump(models, f, indent=2)
 
 
-def discover_schema_doc_types() -> Dict[str, str]:
-    """
-    Return a mapping of doc_type_id -> label discovered from schema files.
-    """
-    doc_types: Dict[str, str] = {}
-    if not os.path.exists(SCHEMA_DIR):
-        return doc_types
-    for filename in os.listdir(SCHEMA_DIR):
-        if not filename.endswith(".json"):
-            continue
-        doc_type_id = os.path.splitext(filename)[0]
-        doc_types[doc_type_id] = f"{doc_type_id} (custom schema)"
-    return doc_types
-
-
 def run_pipeline_with_logs(path: str, override_doc_type_id: str | None = None) -> Dict[str, Any]:
     log_buffer = io.StringIO()
     with contextlib.redirect_stdout(log_buffer):
@@ -253,10 +238,6 @@ INDEX_HTML = """
           <div style="margin-top: 16px;">
             <label for="docTypeSelect">Detected template (you can change):</label>
             <select id="docTypeSelect"></select>
-            <div class="small" style="margin-top: 6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-              <input id="customDocTypeInput" type="text" placeholder="custom_doc_type_id" style="flex:1 1 180px;"/>
-              <button id="useCustomDocTypeBtn" class="secondary" style="margin-top:0;">Use / create custom template</button>
-            </div>
           </div>
         </div>
 
@@ -329,8 +310,6 @@ INDEX_HTML = """
     const reloadSchemaBtn = document.getElementById("reloadSchemaBtn");
     const saveTemplateBtn = document.getElementById("saveTemplateBtn");
     const saveModelBtn    = document.getElementById("saveModelBtn");
-    const useCustomDocTypeBtn = document.getElementById("useCustomDocTypeBtn");
-    const customDocTypeInput  = document.getElementById("customDocTypeInput");
 
     const uploadStatus    = document.getElementById("uploadStatus");
     const templateStatus  = document.getElementById("templateStatus");
@@ -370,24 +349,6 @@ INDEX_HTML = """
       const data = await res.json();
       schemaEditor.value = JSON.stringify(data.schema, null, 2);
       templateStatus.textContent = "Schema loaded.";
-    }
-
-    async function ensureCustomDocType() {
-      const id = customDocTypeInput.value.trim();
-      if (!id) {
-        templateStatus.textContent = "Enter a custom doc type id first.";
-        return;
-      }
-      let option = Array.from(docTypeSelect.options).find((o) => o.value === id);
-      if (!option) {
-        option = document.createElement("option");
-        option.value = id;
-        option.textContent = id + " — custom";
-        docTypeSelect.appendChild(option);
-      }
-      docTypeSelect.value = id;
-      await loadSchemaForSelected();
-      templateStatus.textContent = "Custom template ready.";
     }
 
     uploadBtn.addEventListener("click", async () => {
@@ -432,7 +393,6 @@ INDEX_HTML = """
     });
 
     reloadSchemaBtn.addEventListener("click", loadSchemaForSelected);
-    useCustomDocTypeBtn.addEventListener("click", ensureCustomDocType);
 
     saveTemplateBtn.addEventListener("click", async () => {
       const docTypeId = docTypeSelect.value;
@@ -532,18 +492,7 @@ def index():
 @app.route("/api/doc-types", methods=["GET"])
 def api_doc_types():
     items = [{"id": k, "label": v} for k, v in MORTGAGE_DOC_TYPES.items()]
-    custom_doc_types = discover_schema_doc_types()
-    for doc_type_id, label in custom_doc_types.items():
-        if doc_type_id not in MORTGAGE_DOC_TYPES:
-            items.append({"id": doc_type_id, "label": label})
-
-    for _, cfg in load_models().items():
-        doc_type_id = cfg.get("doc_type_id")
-        if doc_type_id and doc_type_id not in {i["id"] for i in items}:
-            items.append({"id": doc_type_id, "label": f"{doc_type_id} (from saved model)"})
-
     items.append({"id": "unknown", "label": "Unknown / generic template"})
-    items = sorted(items, key=lambda x: x["id"])
     return jsonify({"doc_types": items})
 
 
