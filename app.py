@@ -65,6 +65,17 @@ def run_pipeline_with_logs(path: str, override_doc_type_id: str | None = None) -
     return result
 
 
+def require_openai_key() -> None:
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError(
+            "OPENAI_API_KEY is not set. Set it in the environment before calling the API/UI."
+        )
+
+
+def error_response(message: str, status_code: int = 500):
+    return jsonify({"error": message}), status_code
+
+
 INDEX_HTML = """
 <!doctype html>
 <html lang="en">
@@ -561,26 +572,31 @@ def api_upload():
     if file.filename == "":
         return "Empty filename", 400
 
-    filename = secure_filename(file.filename)
-    doc_id = str(uuid.uuid4())
-    save_name = f"{doc_id}_{filename}"
-    save_path = os.path.join(UPLOAD_FOLDER, save_name)
-    file.save(save_path)
+    try:
+        require_openai_key()
 
-    DOC_STORE[doc_id] = save_path
+        filename = secure_filename(file.filename)
+        doc_id = str(uuid.uuid4())
+        save_name = f"{doc_id}_{filename}"
+        save_path = os.path.join(UPLOAD_FOLDER, save_name)
+        file.save(save_path)
 
-    pages = load_document_as_images(save_path)
-    classification = classify_document(pages)
-    doc_type_id = classification.get("doc_type_id", "unknown")
-    schema = load_schema_for_doc_type(doc_type_id)
+        DOC_STORE[doc_id] = save_path
 
-    return jsonify(
-        {
-            "doc_id": doc_id,
-            "classification": classification,
-            "schema": schema,
-        }
-    )
+        pages = load_document_as_images(save_path)
+        classification = classify_document(pages)
+        doc_type_id = classification.get("doc_type_id", "unknown")
+        schema = load_schema_for_doc_type(doc_type_id)
+
+        return jsonify(
+            {
+                "doc_id": doc_id,
+                "classification": classification,
+                "schema": schema,
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        return error_response(str(exc), 500)
 
 
 @app.route("/api/run-ocr", methods=["POST"])
@@ -592,10 +608,13 @@ def api_run_ocr():
     if not doc_id or doc_id not in DOC_STORE:
         return "Unknown or missing doc_id", 400
 
-    path = DOC_STORE[doc_id]
-    result = run_pipeline_with_logs(path, override_doc_type_id=doc_type_id)
-
-    return jsonify(result)
+    try:
+        require_openai_key()
+        path = DOC_STORE[doc_id]
+        result = run_pipeline_with_logs(path, override_doc_type_id=doc_type_id)
+        return jsonify(result)
+    except Exception as exc:  # noqa: BLE001
+        return error_response(str(exc), 500)
 
 
 @app.route("/api/templates", methods=["POST"])
@@ -650,21 +669,26 @@ def api_run_model(model_name: str):
     if file.filename == "":
         return "Empty filename", 400
 
-    filename = secure_filename(file.filename)
-    tmp_id = str(uuid.uuid4())
-    save_name = f"{tmp_id}_{filename}"
-    save_path = os.path.join(UPLOAD_FOLDER, save_name)
-    file.save(save_path)
+    try:
+        require_openai_key()
 
-    result = run_pipeline_with_logs(save_path, override_doc_type_id=doc_type_id)
+        filename = secure_filename(file.filename)
+        tmp_id = str(uuid.uuid4())
+        save_name = f"{tmp_id}_{filename}"
+        save_path = os.path.join(UPLOAD_FOLDER, save_name)
+        file.save(save_path)
 
-    return jsonify(
-        {
-            "model": model_name,
-            "doc_type_id": doc_type_id,
-            "result": result,
-        }
-    )
+        result = run_pipeline_with_logs(save_path, override_doc_type_id=doc_type_id)
+
+        return jsonify(
+            {
+                "model": model_name,
+                "doc_type_id": doc_type_id,
+                "result": result,
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        return error_response(str(exc), 500)
 
 
 if __name__ == "__main__":
