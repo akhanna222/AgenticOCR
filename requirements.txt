@@ -2,3 +2,5 @@ flask
 openai
 pdf2image
 pillow
+gradio
+pandas
