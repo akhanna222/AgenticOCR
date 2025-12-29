@@ -25,9 +25,9 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 # 0. API KEY SETUP
 # ==========================================
 def _get_openai_client():
-    """Get or create OpenAI client"""
+    """Get or create OpenAI client (lazy initialization)"""
     global _client_instance
-    if '_client_instance' not in globals():
+    if _client_instance is None:
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
             raise RuntimeError(
@@ -39,7 +39,6 @@ def _get_openai_client():
 
 # Lazy initialization - client created only when needed
 _client_instance = None
-client = None  # Will be set on first use
 OPENAI_VISION_MODEL = "gpt-4o-mini"
 
 
