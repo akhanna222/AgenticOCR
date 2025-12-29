@@ -29,7 +29,7 @@ class OpenAIVisionExtractor(OCRExtractor):
     def __init__(
         self,
         api_key: str,
-        model: str = "gpt-4o-mini",
+        model: str = "gpt-4o",
         max_tokens: int = 2500,
         temperature: float = 0.0,
     ):
@@ -38,7 +38,7 @@ class OpenAIVisionExtractor(OCRExtractor):
 
         Args:
             api_key: OpenAI API key
-            model: Model identifier (gpt-4o-mini, gpt-4o, etc.)
+            model: Model identifier (gpt-4o recommended for image PDFs, gpt-4o-mini for text)
             max_tokens: Maximum tokens for response
             temperature: Sampling temperature (0.0 for deterministic)
         """
@@ -173,7 +173,7 @@ class OpenAIEvaluatorAgent:
     Uses OpenAI to identify issues and suggest corrections
     """
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
+    def __init__(self, api_key: str, model: str = "gpt-4o"):
         self.client = OpenAI(api_key=api_key)
         self.model = model
 

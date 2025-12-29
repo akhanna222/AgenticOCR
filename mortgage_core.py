@@ -39,7 +39,8 @@ def _get_openai_client():
 
 # Lazy initialization - client created only when needed
 _client_instance = None
-OPENAI_VISION_MODEL = "gpt-4o-mini"
+# Use gpt-4o for best vision quality (important for scanned/image PDFs)
+OPENAI_VISION_MODEL = os.environ.get("OPENAI_VISION_MODEL", "gpt-4o")
 
 
 # ==========================================
