@@ -8,6 +8,16 @@ from openai import OpenAI
 from pdf2image import convert_from_path
 from PIL import Image, ImageFile
 
+# Import new agentic OCR system
+try:
+    from ocr_agent import AgenticOCR, FieldAssessor, create_metadata_from_schema_hints
+    from openai_extractor import OpenAIEvaluatorAgent, OpenAIVisionExtractor
+
+    AGENTIC_OCR_AVAILABLE = True
+except ImportError:
+    AGENTIC_OCR_AVAILABLE = False
+    print("[mortgage_core] Warning: Agentic OCR modules not available")
+
 # Allow slightly truncated images without crashing
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -697,3 +707,157 @@ def run_full_pipeline(
         "extracted_final": eval_result["final_extracted"],
         "evaluation": eval_result["evaluation"],
     }
+
+
+# ==========================================
+# 9. NEW: AGENTIC OCR PIPELINE WITH AUTO-ASSESSMENT
+# ==========================================
+def run_agentic_pipeline(
+    path: str,
+    override_doc_type_id: Optional[str] = None,
+    use_evaluator: bool = True,
+    required_fields: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    🧠 NEW: Enhanced OCR pipeline with agentic field assessment and flagging
+
+    Features:
+    - Field-level confidence scoring
+    - Automatic assessment of unfilled/invalid fields
+    - Targeted retry for flagged fields
+    - Comprehensive quality reporting
+    - Validation rules per field type
+
+    Args:
+        path: Path to document (PDF or image)
+        override_doc_type_id: Force specific document type (skip classification)
+        use_evaluator: Use separate evaluator agent for quality check
+        required_fields: List of field names that are required
+
+    Returns:
+        Enhanced result dictionary with:
+        - classification: Document classification
+        - extracted_data: Final extracted field values
+        - confidence_scores: Confidence per field (0-1)
+        - assessment_report: Detailed field status report
+        - evaluation: Optional evaluator feedback
+        - flagged_fields: List of fields needing attention
+    """
+    if not AGENTIC_OCR_AVAILABLE:
+        print("[mortgage_core] ERROR: Agentic OCR system not available. Falling back to standard pipeline.")
+        return run_full_pipeline(path, override_doc_type_id)
+
+    print("=" * 60)
+    print("🧠 AGENTIC OCR PIPELINE WITH AUTO-ASSESSMENT")
+    print("=" * 60)
+
+    # Load document
+    print(f"[pipeline] Loading document: {path}")
+    pages = load_document_as_images(path)
+    print(f"[pipeline] Loaded {len(pages)} page(s)")
+
+    # Classify or use override
+    if override_doc_type_id:
+        print(f"[pipeline] Using doc_type_id='{override_doc_type_id}' (user-selected)")
+        doc_type_id = override_doc_type_id
+        classification = {
+            "doc_type_id": doc_type_id,
+            "doc_title": MORTGAGE_DOC_TYPES.get(doc_type_id, doc_type_id),
+            "confidence": 0.99,
+            "rationale": "User-selected template",
+        }
+    else:
+        print("[pipeline] Classifying document...")
+        classification = classify_document(pages)
+        doc_type_id = classification.get("doc_type_id", "unknown")
+        print(f"[pipeline] Classified as: {doc_type_id} (confidence: {classification.get('confidence', 0):.2f})")
+
+    # Load schema
+    schema = load_schema_for_doc_type(doc_type_id)
+    print(f"[pipeline] Loaded schema with {len(schema)} fields")
+
+    # Create metadata map for field validation
+    metadata_map = create_metadata_from_schema_hints(
+        schema=schema,
+        default_required_fields=required_fields or [],
+    )
+
+    # Initialize agentic OCR components
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY not set")
+
+    extractor = OpenAIVisionExtractor(api_key=api_key, model=OPENAI_VISION_MODEL)
+    assessor = FieldAssessor(min_confidence_threshold=0.6)
+    agent = AgenticOCR(extractor=extractor, assessor=assessor, max_retry_attempts=3)
+
+    # Run agentic extraction
+    print("\n" + "=" * 60)
+    result = agent.extract_document(
+        pages=pages,
+        schema=schema,
+        metadata_map=metadata_map,
+        doc_type_id=doc_type_id,
+    )
+    print("=" * 60)
+
+    # Print summary
+    assessment = result["assessment_report"]
+    print(f"\n📊 EXTRACTION SUMMARY:")
+    print(f"   Total Fields: {assessment['total_fields']}")
+    print(f"   Filled: {assessment['filled_fields']} ({assessment['completion_rate']:.1f}%)")
+    print(f"   Unfilled: {assessment['unfilled_fields']}")
+    print(f"   Low Confidence: {assessment['low_confidence_fields']}")
+    print(f"   Invalid: {assessment['invalid_fields']}")
+    print(f"   Average Confidence: {assessment['average_confidence']:.2f}")
+    print(f"   Quality Score: {assessment['quality_score']:.1f}/100")
+
+    if assessment['flagged_field_names']:
+        print(f"\n⚠️  FLAGGED FIELDS ({len(assessment['flagged_field_names'])}):")
+        for field_name in assessment['flagged_field_names'][:10]:  # Show first 10
+            field_detail = assessment['field_details'].get(field_name, {})
+            status = field_detail.get('status', 'unknown')
+            conf = field_detail.get('confidence', 0.0)
+            print(f"   - {field_name}: {status} (confidence: {conf:.2f})")
+
+    # Optional: Run evaluator agent for additional quality check
+    evaluation = None
+    if use_evaluator and pages:
+        print("\n[pipeline] Running evaluator agent...")
+        evaluator = OpenAIEvaluatorAgent(api_key=api_key, model=OPENAI_VISION_MODEL)
+        evaluation = evaluator.evaluate_extraction(
+            image=pages[0],
+            schema=schema,
+            extracted_data=result["extracted_data"],
+            assessment_report=assessment,
+        )
+
+        if evaluation.get("critical_issues"):
+            print(f"   ⚠️  Critical issues found: {len(evaluation['critical_issues'])}")
+            for issue in evaluation['critical_issues'][:3]:
+                print(f"      - {issue}")
+
+        if evaluation.get("suggestions"):
+            print(f"   💡 Suggestions: {len(evaluation['suggestions'])}")
+
+    # Compile final result
+    final_result = {
+        "classification": classification,
+        "schema_used": schema,
+        "extracted_data": result["extracted_data"],
+        "confidence_scores": result["confidence_scores"],
+        "assessment_report": assessment,
+        "evaluation": evaluation,
+        "flagged_fields": assessment['flagged_field_names'],
+        "quality_metrics": {
+            "completion_rate": assessment['completion_rate'],
+            "quality_score": assessment['quality_score'],
+            "average_confidence": assessment['average_confidence'],
+        },
+        "total_pages": len(pages),
+        "doc_type_id": doc_type_id,
+        "timestamp": result["timestamp"],
+    }
+
+    print("\n✅ Agentic OCR pipeline complete!")
+    return final_result
