@@ -24,7 +24,22 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 # ==========================================
 # 0. API KEY SETUP
 # ==========================================
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+def _get_openai_client():
+    """Get or create OpenAI client"""
+    global _client_instance
+    if '_client_instance' not in globals():
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY environment variable is not set. "
+                "Set it with: os.environ['OPENAI_API_KEY'] = 'sk-...'"
+            )
+        _client_instance = OpenAI(api_key=api_key)
+    return _client_instance
+
+# Lazy initialization - client created only when needed
+_client_instance = None
+client = None  # Will be set on first use
 OPENAI_VISION_MODEL = "gpt-4o-mini"
 
 
@@ -421,7 +436,7 @@ JSON_TEMPLATE:
 {template_json}
 """
 
-    resp = client.chat.completions.create(
+    resp = _get_openai_client().chat.completions.create(
         model=OPENAI_VISION_MODEL,
         response_format={"type": "json_object"},
         messages=[
@@ -479,7 +494,7 @@ Return ONLY a JSON object with:
 }}
 """
 
-    resp = client.chat.completions.create(
+    resp = _get_openai_client().chat.completions.create(
         model=OPENAI_VISION_MODEL,
         response_format={"type": "json_object"},
         messages=[
