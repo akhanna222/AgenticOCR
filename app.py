@@ -13,6 +13,7 @@ from mortgage_core import (
     classify_document,
     load_document_as_images,
     load_schema_for_doc_type,
+    run_agentic_pipeline,
     run_full_pipeline,
 )
 
@@ -612,6 +613,52 @@ def api_run_ocr():
         require_openai_key()
         path = DOC_STORE[doc_id]
         result = run_pipeline_with_logs(path, override_doc_type_id=doc_type_id)
+        return jsonify(result)
+    except Exception as exc:  # noqa: BLE001
+        return error_response(str(exc), 500)
+
+
+@app.route("/api/run-agentic-ocr", methods=["POST"])
+def api_run_agentic_ocr():
+    """
+    🧠 NEW: Run agentic OCR with field assessment and flagging
+
+    Request body:
+    {
+        "doc_id": "uuid",
+        "doc_type_id": "current_acct_statements" (optional),
+        "use_evaluator": true (optional, default true),
+        "required_fields": ["field1", "field2"] (optional)
+    }
+
+    Returns enhanced result with:
+    - extracted_data: Field values
+    - confidence_scores: Per-field confidence
+    - assessment_report: Field status analysis
+    - flagged_fields: Fields needing attention
+    - quality_metrics: Overall quality scores
+    """
+    data = request.get_json(force=True)
+    doc_id = data.get("doc_id")
+    doc_type_id = data.get("doc_type_id")
+    use_evaluator = data.get("use_evaluator", True)
+    required_fields = data.get("required_fields")
+
+    if not doc_id or doc_id not in DOC_STORE:
+        return "Unknown or missing doc_id", 400
+
+    try:
+        require_openai_key()
+        path = DOC_STORE[doc_id]
+
+        # Run agentic pipeline (handles its own logging)
+        result = run_agentic_pipeline(
+            path=path,
+            override_doc_type_id=doc_type_id,
+            use_evaluator=use_evaluator,
+            required_fields=required_fields,
+        )
+
         return jsonify(result)
     except Exception as exc:  # noqa: BLE001
         return error_response(str(exc), 500)
