@@ -19,6 +19,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -83,6 +84,9 @@ from pdf2image import convert_from_path
 # Import Phase 2 router
 from api_phase2 import router as phase2_router
 
+# Import Web routes
+from web_routes import router as web_router
+
 # Initialize FastAPI app
 app = FastAPI(
     title="AgenticOCR API",
@@ -92,8 +96,14 @@ app = FastAPI(
     redoc_url="/api/redoc",
 )
 
-# Include Phase 2 routes
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Include Phase 2 API routes
 app.include_router(phase2_router)
+
+# Include Web UI routes
+app.include_router(web_router)
 
 # CORS Configuration
 app.add_middleware(

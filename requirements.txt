@@ -3,6 +3,7 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 flask==3.0.0
 python-multipart==0.0.6  # For file uploads in FastAPI
+jinja2==3.1.2  # For HTML templates
 
 # AI & OCR
 openai==1.3.7

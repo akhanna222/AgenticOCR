@@ -1,0 +1,437 @@
+{% extends "base.html" %}
+
+{% block title %}Templates - AgenticOCR{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Document Templates</h1>
+    <p>Create and manage templates for different document types</p>
+
+    <div class="page-actions">
+        <button class="btn btn-primary" onclick="openModal('createTemplateModal')">
+            <span>➕</span>
+            Create Template
+        </button>
+    </div>
+</div>
+
+<!-- Templates Grid -->
+<div class="stats-grid" id="templatesGrid">
+    <div class="card">
+        <div style="text-align: center; padding: 40px;">
+            <div class="loading"></div>
+            <p style="margin-top: 12px; color: var(--gray-600);">Loading templates...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Template Modal -->
+<div class="modal" id="createTemplateModal">
+    <div class="modal-content" style="max-width: 800px;">
+        <div class="modal-header">
+            <h3 class="modal-title" id="templateModalTitle">Create Template</h3>
+            <button class="modal-close" onclick="closeModal('createTemplateModal')">×</button>
+        </div>
+        <div class="modal-body">
+            <form id="templateForm">
+                <input type="hidden" name="template_id" id="templateId">
+
+                <div class="form-group">
+                    <label class="form-label">Template Name *</label>
+                    <input type="text" class="form-control" name="name" id="templateName" placeholder="Invoice" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">URL Slug *</label>
+                    <input type="text" class="form-control" name="slug" id="templateSlug" placeholder="invoice" required>
+                    <small style="color: var(--gray-600);">
+                        This will be used in the API: /api/v1/process/<strong id="slugPreview">your-slug</strong>
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control" name="description" id="templateDescription" placeholder="Standard invoice document parser"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">
+                        <input type="checkbox" name="is_public" id="templatePublic">
+                        Make this template public (available to all tenants)
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Schema (Fields) *</label>
+                    <div id="fieldsContainer">
+                        <!-- Fields will be added dynamically -->
+                    </div>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="addField()">
+                        ➕ Add Field
+                    </button>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('createTemplateModal')">Cancel</button>
+            <button class="btn btn-primary" id="saveTemplateBtn" onclick="saveTemplate()">Save Template</button>
+        </div>
+    </div>
+</div>
+
+<!-- View Template Modal -->
+<div class="modal" id="viewTemplateModal">
+    <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+            <h3 class="modal-title" id="viewTemplateName">Template Details</h3>
+            <button class="modal-close" onclick="closeModal('viewTemplateModal')">×</button>
+        </div>
+        <div class="modal-body">
+            <div style="margin-bottom: 20px;">
+                <label style="font-weight: 600; color: var(--gray-700); display: block; margin-bottom: 8px;">API Endpoint:</label>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyEndpoint()">Copy</button>
+                    <pre id="templateEndpoint"></pre>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="font-weight: 600; color: var(--gray-700); display: block; margin-bottom: 8px;">Description:</label>
+                <p id="viewTemplateDescription" style="color: var(--gray-600);"></p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="font-weight: 600; color: var(--gray-700); display: block; margin-bottom: 8px;">Fields:</label>
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Field Name</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                            </tr>
+                        </thead>
+                        <tbody id="viewTemplateFields"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="font-weight: 600; color: var(--gray-700); display: block; margin-bottom: 8px;">Stats:</label>
+                <div class="stats-grid" style="grid-template-columns: 1fr 1fr;">
+                    <div>
+                        <strong>Version:</strong> <span id="viewTemplateVersion"></span>
+                    </div>
+                    <div>
+                        <strong>Usage:</strong> <span id="viewTemplateUsage"></span> times
+                    </div>
+                    <div>
+                        <strong>Created:</strong> <span id="viewTemplateCreated"></span>
+                    </div>
+                    <div>
+                        <strong>Status:</strong> <span id="viewTemplateStatus"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-info">
+                <strong>💡 Usage Example:</strong>
+                <div class="code-block" style="margin-top: 12px;">
+                    <pre id="viewTemplateExample"></pre>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('viewTemplateModal')">Close</button>
+            <button class="btn btn-primary" onclick="editTemplateFromView()">Edit Template</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentTemplate = null;
+let fieldCounter = 0;
+
+// Load templates
+async function loadTemplates() {
+    try {
+        const templates = await agenticOCR.apiRequest('/api/v1/templates');
+
+        const grid = document.getElementById('templatesGrid');
+
+        if (templates && templates.length > 0) {
+            grid.innerHTML = templates.map(template => `
+                <div class="card" style="cursor: pointer;" onclick="viewTemplate('${template.id}')">
+                    <div style="margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <h3 style="font-size: 18px; font-weight: 600; color: var(--gray-900);">
+                                ${template.name}
+                            </h3>
+                            ${template.is_public ? '<span class="badge badge-primary">Public</span>' : '<span class="badge badge-gray">Private</span>'}
+                        </div>
+                        <p style="color: var(--gray-600); font-size: 14px; margin-top: 8px;">
+                            ${template.description || 'No description'}
+                        </p>
+                    </div>
+
+                    <div style="padding-top: 16px; border-top: 1px solid var(--gray-200);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <span style="font-size: 13px; color: var(--gray-600);">
+                                <strong>Slug:</strong> <code>${template.slug}</code>
+                            </span>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 13px; color: var(--gray-600);">
+                                Used ${template.usage_count || 0} times
+                            </span>
+                            <span class="badge badge-${template.is_active ? 'success' : 'danger'}">
+                                ${template.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 16px; display: flex; gap: 8px;" onclick="event.stopPropagation();">
+                        <button class="btn btn-sm btn-secondary" style="flex: 1;" onclick="editTemplate('${template.id}')">
+                            Edit
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteTemplate('${template.id}', '${template.name}')">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            grid.innerHTML = `
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🎨</div>
+                        <h3>No templates yet</h3>
+                        <p>Create your first template to get started</p>
+                        <button class="btn btn-primary" onclick="openModal('createTemplateModal')">
+                            Create Template
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Failed to load templates:', error);
+        agenticOCR.showToast('Failed to load templates', 'danger');
+    }
+}
+
+// Add field to template form
+function addField() {
+    fieldCounter++;
+    const container = document.getElementById('fieldsContainer');
+    const fieldDiv = document.createElement('div');
+    fieldDiv.className = 'card';
+    fieldDiv.style.padding = '16px';
+    fieldDiv.style.marginBottom = '12px';
+    fieldDiv.id = `field-${fieldCounter}`;
+
+    fieldDiv.innerHTML = `
+        <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+            <input type="text" class="form-control" placeholder="Field name" name="field_name_${fieldCounter}" required style="flex: 2;">
+            <select class="form-control form-select" name="field_type_${fieldCounter}" style="flex: 1;">
+                <option value="text">Text</option>
+                <option value="number">Number</option>
+                <option value="date">Date</option>
+                <option value="currency">Currency</option>
+                <option value="email">Email</option>
+                <option value="phone">Phone</option>
+                <option value="address">Address</option>
+            </select>
+            <label style="display: flex; align-items: center; gap: 8px; white-space: nowrap;">
+                <input type="checkbox" name="field_required_${fieldCounter}">
+                Required
+            </label>
+            <button type="button" class="btn btn-sm btn-danger" onclick="removeField(${fieldCounter})">×</button>
+        </div>
+        <input type="text" class="form-control" placeholder="Description (optional)" name="field_description_${fieldCounter}">
+    `;
+
+    container.appendChild(fieldDiv);
+}
+
+// Remove field
+function removeField(id) {
+    document.getElementById(`field-${id}`).remove();
+}
+
+// Update slug preview
+document.addEventListener('DOMContentLoaded', () => {
+    const slugInput = document.getElementById('templateSlug');
+    if (slugInput) {
+        slugInput.addEventListener('input', (e) => {
+            document.getElementById('slugPreview').textContent = e.target.value || 'your-slug';
+        });
+    }
+});
+
+// Save template
+async function saveTemplate() {
+    const form = document.getElementById('templateForm');
+
+    if (!agenticOCR.validateForm(form)) {
+        agenticOCR.showToast('Please fill in all required fields', 'danger');
+        return;
+    }
+
+    const formData = new FormData(form);
+    const templateId = formData.get('template_id');
+
+    // Build fields array
+    const fields = [];
+    for (let i = 1; i <= fieldCounter; i++) {
+        const name = formData.get(`field_name_${i}`);
+        if (name) {
+            fields.push({
+                name: name,
+                type: formData.get(`field_type_${i}`),
+                required: formData.get(`field_required_${i}`) === 'on',
+                description: formData.get(`field_description_${i}`)
+            });
+        }
+    }
+
+    const data = {
+        name: formData.get('name'),
+        slug: formData.get('slug'),
+        description: formData.get('description'),
+        is_public: formData.get('is_public') === 'on',
+        schema: { fields }
+    };
+
+    const btn = document.getElementById('saveTemplateBtn');
+    const originalText = btn.innerHTML;
+    agenticOCR.showLoading(btn);
+
+    try {
+        const endpoint = templateId ? `/api/v1/templates/${templateId}` : '/api/v1/templates';
+        const method = templateId ? 'PUT' : 'POST';
+
+        await agenticOCR.apiRequest(endpoint, {
+            method,
+            body: data,
+        });
+
+        agenticOCR.showToast(`Template ${templateId ? 'updated' : 'created'} successfully!`, 'success');
+        closeModal('createTemplateModal');
+        form.reset();
+        loadTemplates();
+    } catch (error) {
+        agenticOCR.showToast(error.message, 'danger');
+    } finally {
+        agenticOCR.hideLoading(btn, originalText);
+    }
+}
+
+// View template
+async function viewTemplate(templateId) {
+    try {
+        const template = await agenticOCR.apiRequest(`/api/v1/templates/${templateId}`);
+        currentTemplate = template;
+
+        document.getElementById('viewTemplateName').textContent = template.name;
+        document.getElementById('viewTemplateDescription').textContent = template.description || 'No description';
+        document.getElementById('templateEndpoint').textContent = `POST ${window.location.origin}/api/v1/process/${template.slug}`;
+        document.getElementById('viewTemplateVersion').textContent = template.version;
+        document.getElementById('viewTemplateUsage').textContent = template.usage_count || 0;
+        document.getElementById('viewTemplateCreated').textContent = agenticOCR.formatDate(template.created_at);
+        document.getElementById('viewTemplateStatus').innerHTML = `<span class="badge badge-${template.is_active ? 'success' : 'danger'}">${template.is_active ? 'Active' : 'Inactive'}</span>`;
+
+        // Show fields
+        const fieldsBody = document.getElementById('viewTemplateFields');
+        fieldsBody.innerHTML = template.schema.fields.map(field => `
+            <tr>
+                <td><strong>${field.name}</strong><br><small style="color: var(--gray-600);">${field.description || ''}</small></td>
+                <td><span class="badge badge-gray">${field.type}</span></td>
+                <td>${field.required ? '<span class="badge badge-warning">Required</span>' : '<span class="badge badge-gray">Optional</span>'}</td>
+            </tr>
+        `).join('');
+
+        // Show usage example
+        document.getElementById('viewTemplateExample').textContent =
+            `curl -X POST ${window.location.origin}/api/v1/process/${template.slug} \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -F "file=@document.pdf"`;
+
+        openModal('viewTemplateModal');
+    } catch (error) {
+        agenticOCR.showToast(error.message, 'danger');
+    }
+}
+
+// Copy endpoint
+function copyEndpoint() {
+    const endpoint = document.getElementById('templateEndpoint').textContent;
+    agenticOCR.copyToClipboard(endpoint);
+}
+
+// Edit template from view
+function editTemplateFromView() {
+    if (currentTemplate) {
+        closeModal('viewTemplateModal');
+        editTemplate(currentTemplate.id);
+    }
+}
+
+// Edit template
+async function editTemplate(templateId) {
+    try {
+        const template = await agenticOCR.apiRequest(`/api/v1/templates/${templateId}`);
+
+        document.getElementById('templateModalTitle').textContent = 'Edit Template';
+        document.getElementById('templateId').value = template.id;
+        document.getElementById('templateName').value = template.name;
+        document.getElementById('templateSlug').value = template.slug;
+        document.getElementById('templateDescription').value = template.description || '';
+        document.getElementById('templatePublic').checked = template.is_public;
+
+        // Clear existing fields
+        document.getElementById('fieldsContainer').innerHTML = '';
+        fieldCounter = 0;
+
+        // Add existing fields
+        template.schema.fields.forEach(field => {
+            addField();
+            document.querySelector(`input[name="field_name_${fieldCounter}"]`).value = field.name;
+            document.querySelector(`select[name="field_type_${fieldCounter}"]`).value = field.type;
+            document.querySelector(`input[name="field_required_${fieldCounter}"]`).checked = field.required;
+            document.querySelector(`input[name="field_description_${fieldCounter}"]`).value = field.description || '';
+        });
+
+        openModal('createTemplateModal');
+    } catch (error) {
+        agenticOCR.showToast(error.message, 'danger');
+    }
+}
+
+// Delete template
+async function deleteTemplate(templateId, templateName) {
+    if (!confirm(`Are you sure you want to delete "${templateName}"? This action cannot be undone.`)) {
+        return;
+    }
+
+    try {
+        await agenticOCR.apiRequest(`/api/v1/templates/${templateId}`, {
+            method: 'DELETE',
+        });
+
+        agenticOCR.showToast('Template deleted successfully', 'success');
+        loadTemplates();
+    } catch (error) {
+        agenticOCR.showToast(error.message, 'danger');
+    }
+}
+
+// Load templates on page load
+document.addEventListener('DOMContentLoaded', () => {
+    loadTemplates();
+    // Add first field by default
+    addField();
+});
+</script>
+{% endblock %}

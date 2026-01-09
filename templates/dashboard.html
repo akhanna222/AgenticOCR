@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - AgenticOCR{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <p>Welcome back! Here's an overview of your activity.</p>
+</div>
+
+<!-- Stats Grid -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-header">
+            <div>
+                <div class="stat-value" id="totalDocuments">-</div>
+                <div class="stat-label">Total Documents</div>
+            </div>
+            <div class="stat-icon blue">📄</div>
+        </div>
+        <div class="stat-change positive" id="docsChange">
+            ↑ <span id="docsToday">0</span> today
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-header">
+            <div>
+                <div class="stat-value" id="avgQuality">-</div>
+                <div class="stat-label">Avg Quality Score</div>
+            </div>
+            <div class="stat-icon green">⭐</div>
+        </div>
+        <div class="stat-change positive">
+            Quality metrics
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-header">
+            <div>
+                <div class="stat-value" id="successRate">-</div>
+                <div class="stat-label">Success Rate</div>
+            </div>
+            <div class="stat-icon purple">✓</div>
+        </div>
+        <div class="stat-change positive">
+            Processing success
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-header">
+            <div>
+                <div class="stat-value" id="apiCalls">-</div>
+                <div class="stat-label">API Calls</div>
+            </div>
+            <div class="stat-icon orange">🔌</div>
+        </div>
+        <div class="stat-change">
+            This month
+        </div>
+    </div>
+</div>
+
+<!-- Usage Quota -->
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">Usage & Quota</div>
+        <span class="badge badge-primary" id="currentPlan">Loading...</span>
+    </div>
+    <div class="card-body">
+        <div style="margin-bottom: 24px;">
+            <div class="flex-between mb-4">
+                <span><strong>Documents</strong></span>
+                <span id="docQuota">- / -</span>
+            </div>
+            <div class="progress">
+                <div class="progress-bar" id="docProgress" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 24px;">
+            <div class="flex-between mb-4">
+                <span><strong>API Calls</strong></span>
+                <span id="apiQuota">- / -</span>
+            </div>
+            <div class="progress">
+                <div class="progress-bar" id="apiProgress" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 24px;">
+            <div class="flex-between mb-4">
+                <span><strong>Storage</strong></span>
+                <span id="storageQuota">- / -</span>
+            </div>
+            <div class="progress">
+                <div class="progress-bar" id="storageProgress" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div class="flex-between" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--gray-200);">
+            <div>
+                <strong>Next billing cycle:</strong>
+                <span id="nextBilling">-</span>
+            </div>
+            <a href="/billing" class="btn btn-sm btn-primary">Upgrade Plan</a>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Documents -->
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">Recent Documents</div>
+        <a href="/documents" class="btn btn-sm btn-secondary">View All</a>
+    </div>
+    <div class="card-body">
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Filename</th>
+                        <th>Template</th>
+                        <th>Status</th>
+                        <th>Quality</th>
+                        <th>Processed</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="recentDocuments">
+                    <tr>
+                        <td colspan="6" class="text-center">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+// Load dashboard data
+async function loadDashboard() {
+    try {
+        // Load usage stats
+        const stats = await agenticOCR.apiRequest('/api/v1/analytics/usage');
+
+        if (stats) {
+            document.getElementById('totalDocuments').textContent = stats.total_documents || 0;
+            document.getElementById('docsToday').textContent = stats.documents_today || 0;
+            document.getElementById('avgQuality').textContent = (stats.average_quality_score || 0) + '%';
+            document.getElementById('successRate').textContent = (stats.success_rate || 0) + '%';
+            document.getElementById('apiCalls').textContent = stats.total_api_calls || 0;
+        }
+
+        // Load quota information
+        const quota = await agenticOCR.apiRequest('/api/v1/billing/quota');
+
+        if (quota) {
+            document.getElementById('currentPlan').textContent = quota.plan.toUpperCase();
+
+            // Documents quota
+            const docPercentage = quota.documents_per_month > 0
+                ? (quota.documents_used_this_month / quota.documents_per_month * 100).toFixed(1)
+                : 0;
+            document.getElementById('docQuota').textContent =
+                `${quota.documents_used_this_month} / ${quota.documents_per_month === -1 ? '∞' : quota.documents_per_month}`;
+            document.getElementById('docProgress').style.width = docPercentage + '%';
+
+            // API calls quota
+            const apiPercentage = quota.api_calls_per_month > 0
+                ? (quota.api_calls_used_this_month / quota.api_calls_per_month * 100).toFixed(1)
+                : 0;
+            document.getElementById('apiQuota').textContent =
+                `${quota.api_calls_used_this_month} / ${quota.api_calls_per_month === -1 ? '∞' : quota.api_calls_per_month}`;
+            document.getElementById('apiProgress').style.width = apiPercentage + '%';
+
+            // Storage quota
+            const storagePercentage = quota.storage_limit_mb > 0
+                ? (quota.storage_used_mb / quota.storage_limit_mb * 100).toFixed(1)
+                : 0;
+            document.getElementById('storageQuota').textContent =
+                `${agenticOCR.formatBytes(quota.storage_used_mb * 1024 * 1024)} / ${quota.storage_limit_mb === -1 ? '∞' : agenticOCR.formatBytes(quota.storage_limit_mb * 1024 * 1024)}`;
+            document.getElementById('storageProgress').style.width = storagePercentage + '%';
+        }
+
+        // Load recent documents
+        const docs = await agenticOCR.apiRequest('/api/v1/documents?page=1&page_size=5');
+
+        if (docs && docs.items && docs.items.length > 0) {
+            const tbody = document.getElementById('recentDocuments');
+            tbody.innerHTML = docs.items.map(doc => `
+                <tr>
+                    <td>${doc.filename}</td>
+                    <td><span class="badge badge-gray">${doc.template_id || 'N/A'}</span></td>
+                    <td>
+                        <span class="badge badge-${doc.status === 'completed' ? 'success' : doc.status === 'failed' ? 'danger' : 'warning'}">
+                            ${doc.status}
+                        </span>
+                    </td>
+                    <td>${doc.quality_metrics?.quality_score || 'N/A'}%</td>
+                    <td>${agenticOCR.formatDate(doc.processed_at || doc.created_at)}</td>
+                    <td>
+                        <a href="/documents/${doc.id}" class="btn btn-sm btn-secondary">View</a>
+                    </td>
+                </tr>
+            `).join('');
+        } else {
+            document.getElementById('recentDocuments').innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📄</div>
+                            <h3>No documents yet</h3>
+                            <p>Upload your first document to get started</p>
+                            <a href="/documents" class="btn btn-primary">Upload Document</a>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+    } catch (error) {
+        console.error('Failed to load dashboard:', error);
+        agenticOCR.showToast('Failed to load dashboard data', 'danger');
+    }
+}
+
+// Load dashboard on page load
+document.addEventListener('DOMContentLoaded', loadDashboard);
+</script>
+{% endblock %}

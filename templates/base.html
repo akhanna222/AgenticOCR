@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AgenticOCR{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/main.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <h1>
+                    <span>📄</span>
+                    AgenticOCR
+                </h1>
+            </div>
+
+            <nav>
+                <ul class="sidebar-nav">
+                    <li>
+                        <a href="/dashboard" class="{% if request.url.path == '/dashboard' %}active{% endif %}">
+                            <span class="icon">📊</span>
+                            Dashboard
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/documents" class="{% if request.url.path == '/documents' %}active{% endif %}">
+                            <span class="icon">📝</span>
+                            Documents
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/templates" class="{% if request.url.path == '/templates' %}active{% endif %}">
+                            <span class="icon">🎨</span>
+                            Templates
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/api-keys" class="{% if request.url.path == '/api-keys' %}active{% endif %}">
+                            <span class="icon">🔑</span>
+                            API Keys
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/team" class="{% if request.url.path == '/team' %}active{% endif %}">
+                            <span class="icon">👥</span>
+                            Team
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/billing" class="{% if request.url.path == '/billing' %}active{% endif %}">
+                            <span class="icon">💳</span>
+                            Billing
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/webhooks" class="{% if request.url.path == '/webhooks' %}active{% endif %}">
+                            <span class="icon">🔔</span>
+                            Webhooks
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/settings" class="{% if request.url.path == '/settings' %}active{% endif %}">
+                            <span class="icon">⚙️</span>
+                            Settings
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar">
+                        {{ user.email[0]|upper if user else 'U' }}
+                    </div>
+                    <div class="user-details">
+                        <h4>{{ user.full_name if user else 'User' }}</h4>
+                        <p>{{ user.role|capitalize if user else 'Member' }}</p>
+                    </div>
+                </div>
+                <button class="btn btn-secondary btn-sm mt-4" id="logoutBtn" style="width: 100%;">
+                    Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', path='/js/app.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
