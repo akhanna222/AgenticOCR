@@ -302,6 +302,209 @@ class SortParams(BaseModel):
 
 
 # ==========================================
+# PHASE 2: TEAM MANAGEMENT SCHEMAS
+# ==========================================
+
+class TeamInviteCreate(BaseModel):
+    """Create team invitation"""
+    email: EmailStr
+    role: str = "member"  # owner, admin, member, viewer
+    permissions: Optional[Dict[str, Any]] = None
+
+class TeamInviteResponse(BaseModel):
+    """Team invitation response"""
+    id: str
+    email: str
+    role: str
+    status: str
+    expires_at: datetime
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+class TeamMemberResponse(BaseModel):
+    """Team member response"""
+    id: str
+    user_id: str
+    role: str
+    permissions: Dict[str, Any]
+    department: Optional[str]
+    title: Optional[str]
+    is_active: bool
+    joined_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+class TeamMemberUpdate(BaseModel):
+    """Update team member"""
+    role: Optional[str]
+    permissions: Optional[Dict[str, Any]]
+    department: Optional[str]
+    title: Optional[str]
+
+
+# ==========================================
+# PHASE 2: BILLING & QUOTA SCHEMAS
+# ==========================================
+
+class UsageQuotaResponse(BaseModel):
+    """Usage quota response"""
+    id: str
+    tenant_id: str
+    plan: str
+    documents_per_month: int
+    documents_used_this_month: int
+    api_calls_per_month: int
+    api_calls_used_this_month: int
+    storage_limit_mb: int
+    storage_used_mb: int
+    custom_templates_allowed: bool
+    team_members_limit: int
+    webhooks_allowed: bool
+    api_keys_limit: int
+
+    class Config:
+        orm_mode = True
+
+
+class SubscriptionResponse(BaseModel):
+    """Subscription response"""
+    id: str
+    tenant_id: str
+    plan: str
+    status: str
+    amount: int
+    currency: str
+    billing_interval: str
+    current_period_start: Optional[datetime]
+    current_period_end: Optional[datetime]
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+class SubscriptionCreate(BaseModel):
+    """Create subscription"""
+    plan: str = Field(..., regex="^(free|starter|professional|enterprise)$")
+    billing_interval: str = Field("monthly", regex="^(monthly|yearly)$")
+
+
+class InvoiceResponse(BaseModel):
+    """Invoice response"""
+    id: str
+    tenant_id: str
+    invoice_number: str
+    status: str
+    amount_due: int
+    amount_paid: int
+    currency: str
+    period_start: Optional[datetime]
+    period_end: Optional[datetime]
+    due_date: Optional[datetime]
+    paid_at: Optional[datetime]
+    line_items: List[Dict[str, Any]]
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+# ==========================================
+# PHASE 2: WEBHOOK SCHEMAS (ENHANCED)
+# ==========================================
+
+class WebhookCreate(BaseModel):
+    """Create webhook request"""
+    url: str = Field(..., regex="^https?://")
+    events: List[str] = ["document.completed", "document.failed"]
+    secret: Optional[str] = None
+
+
+class WebhookUpdate(BaseModel):
+    """Update webhook request"""
+    url: Optional[str] = Field(None, regex="^https?://")
+    events: Optional[List[str]]
+    is_active: Optional[bool]
+
+
+class WebhookResponse(BaseModel):
+    """Webhook response"""
+    id: str
+    url: str
+    events: List[str]
+    is_active: bool
+    failure_count: int
+    last_success: Optional[datetime]
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+class WebhookDeliveryResponse(BaseModel):
+    """Webhook delivery log response"""
+    id: str
+    webhook_id: str
+    event_type: str
+    status: str
+    status_code: Optional[int]
+    attempt_number: int
+    delivered_at: Optional[datetime]
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+# ==========================================
+# PHASE 2: BRANDING SCHEMAS
+# ==========================================
+
+class TenantBrandingUpdate(BaseModel):
+    """Update tenant branding"""
+    company_name: Optional[str]
+    logo_url: Optional[str]
+    favicon_url: Optional[str]
+    primary_color: Optional[str] = Field(None, regex="^#[0-9A-Fa-f]{6}$")
+    secondary_color: Optional[str] = Field(None, regex="^#[0-9A-Fa-f]{6}$")
+    accent_color: Optional[str] = Field(None, regex="^#[0-9A-Fa-f]{6}$")
+    support_email: Optional[EmailStr]
+    support_url: Optional[str]
+    website_url: Optional[str]
+    custom_domain: Optional[str]
+    email_from_name: Optional[str]
+    email_from_address: Optional[EmailStr]
+    email_footer_text: Optional[str]
+
+
+class TenantBrandingResponse(BaseModel):
+    """Tenant branding response"""
+    id: str
+    tenant_id: str
+    company_name: Optional[str]
+    logo_url: Optional[str]
+    favicon_url: Optional[str]
+    primary_color: Optional[str]
+    secondary_color: Optional[str]
+    accent_color: Optional[str]
+    support_email: Optional[str]
+    support_url: Optional[str]
+    website_url: Optional[str]
+    custom_domain: Optional[str]
+    domain_verified: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+# ==========================================
 # HELPER FUNCTIONS
 # ==========================================
 

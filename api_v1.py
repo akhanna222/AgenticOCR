@@ -77,16 +77,23 @@ from schemas import (
 )
 
 # Import OCR system
-from mortgage_core import run_agentic_pipeline
+from mortgage_core import run_agentic_pipeline, classify_document
+from pdf2image import convert_from_path
+
+# Import Phase 2 router
+from api_phase2 import router as phase2_router
 
 # Initialize FastAPI app
 app = FastAPI(
     title="AgenticOCR API",
     description="Production-ready document parsing SaaS with intelligent OCR",
-    version="1.0.0",
+    version="2.0.0",  # Phase 2
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
+
+# Include Phase 2 routes
+app.include_router(phase2_router)
 
 # CORS Configuration
 app.add_middleware(
@@ -1200,6 +1207,105 @@ async def get_usage_stats(
         success_rate=round(success_rate, 2),
         total_api_calls=total_api_calls or 0,
     )
+
+
+# ==========================================
+# DOCUMENT CLASSIFICATION ENDPOINT
+# ==========================================
+
+@app.post("/api/v1/documents/classify")
+async def classify_document_endpoint(
+    file: UploadFile = File(...),
+    user_api_key: tuple = Depends(get_current_user_or_api_key),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Classify document type without full OCR processing
+
+    Returns document type, confidence, and suggested template
+    """
+    current_user, api_key = user_api_key
+    tenant_id = current_user.tenant_id if current_user else api_key.tenant_id
+
+    try:
+        # Generate temporary ID
+        doc_id = str(uuid.uuid4())
+
+        # Create temporary upload directory
+        upload_dir = os.path.join("uploads", tenant_id, "temp")
+        os.makedirs(upload_dir, exist_ok=True)
+
+        # Save file temporarily
+        file_path = os.path.join(upload_dir, f"{doc_id}_{file.filename}")
+        with open(file_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+
+        # Convert first page to image
+        pages = convert_from_path(file_path, first_page=1, last_page=1)
+
+        if not pages:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not extract pages from document"
+            )
+
+        # Classify document
+        classification = classify_document(pages)
+
+        # Find matching template
+        doc_type_id = classification.get("doc_type_id", "unknown")
+
+        # Search for template by slug
+        template = db.query(Template).filter(
+            Template.slug == doc_type_id,
+            Template.is_active == True,
+            (
+                (Template.tenant_id == tenant_id) |
+                (Template.is_public == True)
+            )
+        ).first()
+
+        # Clean up temporary file
+        try:
+            os.remove(file_path)
+        except:
+            pass
+
+        # Log audit event
+        if current_user:
+            audit = AuditLog(
+                tenant_id=tenant_id,
+                user_id=current_user.id,
+                action="document.classify",
+                resource_type="document",
+                resource_id=doc_id,
+                details={
+                    "filename": file.filename,
+                    "classification": classification,
+                },
+            )
+            db.add(audit)
+            db.commit()
+
+        return success_response(
+            data={
+                "classification": classification,
+                "suggested_template": {
+                    "id": template.id if template else None,
+                    "name": template.name if template else None,
+                    "slug": template.slug if template else None,
+                } if template else None,
+                "filename": file.filename,
+            },
+            message="Document classified successfully"
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Classification failed: {str(e)}"
+        )
 
 
 # ==========================================
